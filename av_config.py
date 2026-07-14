@@ -9,7 +9,7 @@
 # PHYSICS & SIMULATION
 # ============================================================================
 SIMULATION_STEP = 1 / 240.0  # 240 Hz
-MAX_SPEED = 40.0          # m/s (reduced for stable simulation)
+MAX_SPEED = 20.0          # m/s (reduced for stable simulation)
 MAX_STEER = 0.8              # rad (~46 deg)
 WAYPOINT_THRESHOLD = 0.3     # m
 

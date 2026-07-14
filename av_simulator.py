@@ -100,7 +100,7 @@ class DiffusionPolicySimulator:
         """Handle toggle commands dari input handler."""
         if toggles.get("space"):
             self.mode = MODE_MANUAL if self.mode == MODE_AUTONOMOUS else MODE_AUTONOMOUS
-            print(f"[INFO] Mode: {self.mode}")
+            print(f"\033[96m[INFO] Mode: {self.mode}\033[0m")
             if self.mode == MODE_AUTONOMOUS:
                 self.controller.reset()
 
@@ -108,14 +108,14 @@ class DiffusionPolicySimulator:
             self.is_recording = not self.is_recording
             if self.is_recording:
                 self.current_demo = []
-                print("[INFO] ▶ MULAI MEREKAM demonstrasi (Behavior Cloning)...")
+                print("\033[96m[INFO] MULAI MEREKAM demonstrasi (Behavior Cloning)...\033[0m")
             else:
                 if len(self.current_demo) > 10:
                     self.demonstrations.append(self.current_demo)
-                    print(f"[INFO] ⏹ Demonstrasi selesai! {len(self.current_demo)} steps tersimpan.")
-                    print(f"       Total demo tersimpan: {len(self.demonstrations)}")
+                    print(f"\033[96m[INFO] Demonstrasi selesai! {len(self.current_demo)} steps tersimpan.\033[0m")
+                    print(f"\033[96m       Total demo tersimpan: {len(self.demonstrations)}\033[0m")
                 else:
-                    print("[INFO] Demonstrasi terlalu pendek, dibatalkan.")
+                    print("\033[96m[INFO] Demonstrasi terlalu pendek, dibatalkan.\033[0m")
 
         if toggles.get("replay"):
             if len(self.demonstrations) > 0 and not self.is_replaying:
@@ -124,23 +124,23 @@ class DiffusionPolicySimulator:
                 self.replay_data = self.demonstrations[-1]
                 self.vehicle.reset()
                 self.controller.reset()
-                print(f"[INFO] ▶ REPLAY demonstrasi ({len(self.replay_data)} steps)")
+                print(f"\033[96m[INFO] REPLAY demonstrasi ({len(self.replay_data)} steps)\033[0m")
             else:
                 self.is_replaying = False
                 self.replay_data = None
-                print("[INFO] ⏹ Replay dihentikan.")
+                print("\033[96m[INFO] Replay dihentikan.\033[0m")
 
         if toggles.get("chunking"):
             self.use_action_chunking = not self.use_action_chunking
-            print(f"[INFO] Action Chunking: {'AKTIF' if self.use_action_chunking else 'NONAKTIF'}")
+            print(f"\033[96m[INFO] Action Chunking: {'AKTIF' if self.use_action_chunking else 'NONAKTIF'}\033[0m")
 
         if toggles.get("pos_ctrl"):
             self.control_mode = CTRL_POSITION
-            print(f"[INFO] Control mode: POSITION CONTROL")
+            print(f"\033[96m[INFO] Control mode: POSITION CONTROL\033[0m")
 
         if toggles.get("vel_ctrl"):
             self.control_mode = CTRL_VELOCITY
-            print(f"[INFO] Control mode: VELOCITY CONTROL")
+            print(f"\033[96m[INFO] Control mode: VELOCITY CONTROL\033[0m")
 
     def _step_manual(self, throttle, steering):
         """Step untuk mode manual."""
@@ -180,9 +180,9 @@ class DiffusionPolicySimulator:
             current_wp = self.controller.waypoints[current_wp_idx]
             dist_to_wp = np.linalg.norm(state["position"][:2] - current_wp[:2])
             progress = f"{current_wp_idx}/{total_waypoints-1}"
-            print(f"[AUTONOMOUS] Heading to WP{progress} | Distance: {dist_to_wp:.2f}m | Speed: {state['speed']:.2f} m/s")
+            print(f"\033[94m[AUTONOMOUS] Heading to WP{progress} | Distance: {dist_to_wp:.2f}m | Speed: {state['speed']:.2f} m/s\033[0m")
         else:
-            print(f"[AUTONOMOUS] ALL WAYPOINTS COMPLETED!")
+            print(f"\033[94m[AUTONOMOUS] ALL WAYPOINTS COMPLETED!\033[0m")
 
     def _step_replay(self):
         """Replay demonstrasi (Behavior Cloning)."""

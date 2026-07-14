@@ -270,4 +270,3 @@ Implementasi real akan:
 
 ---
 
-**Pertanyaan?** Review paper atau cek output terminal per-frame untuk pahami apa yang terjadi selama setiap control cycle.

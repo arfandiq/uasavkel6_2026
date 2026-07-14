@@ -85,8 +85,8 @@ class Racecar:
         steer_angle = steering * MAX_STEER
         target_speed = throttle * MAX_SPEED
 
-        # Debug output - always print for visibility
-        print(f"[VEHICLE] throttle={throttle:.2f}, steering={steering:.2f}, speed={target_speed:.2f}, steer_angle={steer_angle:.2f}")
+        # Debug output - always print for visibility (with color)
+        print(f"\033[91m[VEHICLE] throttle={throttle:.2f}, steering={steering:.2f}, speed={target_speed:.2f}, steer_angle={steer_angle:.2f}\033[0m")
 
         # --- Steering (front wheels) ---
         p.setJointMotorControl2(
@@ -122,14 +122,14 @@ class Racecar:
                 self.current_speed = target_speed
 
             actual_speed = self.current_speed
-            print(f"[MODE1-SMOOTH] ramp speed → {actual_speed:.2f} m/s (target: {target_speed:.2f})")
+            print(f"\033[92m[MODE1-SMOOTH] ramp speed → {actual_speed:.2f} m/s (target: {target_speed:.2f})\033[0m")
 
         else:
             # MODE 2: VELOCITY CONTROL - INSTANT (direct jump to max speed)
             # No smoothing - jerky/instant response
             self.current_speed = target_speed
             actual_speed = target_speed
-            print(f"[MODE2-INSTANT] jump to {actual_speed:.2f} m/s (instant!)")
+            print(f"\033[93m[MODE2-INSTANT] jump to {actual_speed:.2f} m/s (instant!)\033[0m")
 
         # Calculate linear velocity in world frame based on yaw
         vx = actual_speed * math.cos(current_yaw)
