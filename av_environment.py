@@ -108,7 +108,30 @@ class Environment:
             np.array([0.0, -3.0, 0.0]),
             np.array([2.1, -2.1, 0.0]),
         ]
-        print(f"[ENV] ✅ Created {len(self.waypoints)} waypoints")
+
+        # Spawn visual markers untuk setiap waypoint
+        for i, wp in enumerate(self.waypoints):
+            # Waypoint terakhir = HIJAU, waypoint lain = ORANGE
+            if i == len(self.waypoints) - 1:
+                # Final waypoint - GREEN
+                color = [0, 1, 0, 0.8]  # Green
+            else:
+                # Intermediate waypoints - ORANGE
+                color = [1, 0.65, 0, 0.8]  # Orange
+
+            # Create sphere untuk waypoint
+            vis_shape = p.createVisualShape(
+                p.GEOM_SPHERE,
+                radius=0.15,
+                rgbaColor=color
+            )
+            p.createMultiBody(
+                baseMass=0,
+                baseVisualShapeIndex=vis_shape,
+                basePosition=[wp[0], wp[1], 0.1]
+            )
+
+        print(f"[ENV] ✅ Created {len(self.waypoints)} waypoints with visual markers (orange=WP0-6, green=final)")
 
     def _build_goal_marker(self):
         """Marker visual untuk goal waypoint."""

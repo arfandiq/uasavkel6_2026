@@ -63,6 +63,9 @@ class PurePursuitController:
         # Kurangi kecepatan jika belok tajam
         throttle *= max(0.3, 1.0 - abs(steering) * 0.5)
 
+        # CRITICAL: Clip throttle to valid range [-1, 1]
+        throttle = np.clip(throttle, -1.0, 1.0)
+
         # Simpan ke trajectory history
         self.trajectory_history.append((pos.copy(), target.copy()))
 

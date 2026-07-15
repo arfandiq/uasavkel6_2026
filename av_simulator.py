@@ -1,29 +1,27 @@
 """
 ╔════════════════════════════════════════════════════════════════╗
 ║  Diffusion Policy Simulator — Main Simulator Class            ║
-║  Menggabungkan semua komponen untuk simulasi autonomous vehicle║
+║  Autonomous Navigation dengan Full Pipeline Visualization     ║
+║  Observation → Encoder → Diffusion → Action → Control         ║
 ╚════════════════════════════════════════════════════════════════╝
 """
 
 import pybullet as p
 import numpy as np
-import time
 from collections import deque
 from av_config import *
 from av_input_simple import InputHandler
 from av_vehicle import Racecar
 from av_environment import Environment
 from av_controller import PurePursuitController
+from av_diffusion_pipeline import DiffusionPipeline
 
 
 class DiffusionPolicySimulator:
-    """Simulator yang mendemonstrasikan konsep-konsep dari paper Diffusion Policy.
+    """Simulator autonomous navigation dengan Diffusion Policy pipeline.
 
-    Konsep yang disimulasikan:
-    1. BEHAVIOR CLONING → Record demonstrasi manual → replay otomatis
-    2. ACTION CHUNKING   → Prediksi & eksekusi N aksi sekaligus
-    3. DENOISING         → Smoothing dan refinement trajectory
-    4. POSITION CONTROL  → Lebih stabil (temuan paper)
+    Pipeline:
+    Observation → Encoder → Conditional Diffusion Model → Action → Vehicle Control
     """
 
     def __init__(self, env, vehicle, controller, input_handler):
@@ -31,22 +29,11 @@ class DiffusionPolicySimulator:
         self.vehicle = vehicle
         self.controller = controller
         self.input_handler = input_handler
+        self.diffusion_pipeline = DiffusionPipeline()
 
         # State
-        self.mode = MODE_AUTONOMOUS
-        self.control_mode = CTRL_POSITION
         self.running = True
         self.use_action_chunking = True
-
-        # Demonstration data (Behavior Cloning)
-        self.is_recording = False
-        self.demonstrations = []
-        self.current_demo = []
-
-        # Replay
-        self.is_replaying = False
-        self.replay_idx = 0
-        self.replay_data = None
 
         # Action chunking buffer
         self.action_chunk_buffer = deque(maxlen=ACTION_CHUNK_SIZE)
@@ -65,19 +52,13 @@ class DiffusionPolicySimulator:
             return
 
         # --- Input Handling ---
-        throttle, steering, toggles = self.input_handler.get_action()
+        _, _, toggles = self.input_handler.get_action()
 
         # Proses toggles
         self._handle_toggles(toggles)
 
-        # --- Step Logic ---
-        if self.mode == MODE_MANUAL or self.is_replaying:
-            if self.is_replaying:
-                self._step_replay()
-            else:
-                self._step_manual(throttle, steering)
-        else:
-            self._step_autonomous()
+        # --- Autonomous Step ---
+        self._step_autonomous()
 
         # --- Step Physics ---
         p.stepSimulation()
@@ -87,9 +68,9 @@ class DiffusionPolicySimulator:
             state = self.vehicle.get_state()
             goal_pos = self.controller.waypoints[-1][:2]
             dist_to_goal = np.linalg.norm(state["position"][:2] - goal_pos)
-            if dist_to_goal < 0.5:
+            if dist_to_goal < WAYPOINT_THRESHOLD:
                 self.goal_reached = True
-                print(f"[INFO] 🎯 GOAL TERCAPAI dalam {self.step_count} steps!")
+                print(f"\033[92m[MISSION_COMPLETE] 🎯 GOAL TERCAPAI dalam {self.step_count} steps!\033[0m")
 
         self.step_count += 1
 
@@ -98,67 +79,15 @@ class DiffusionPolicySimulator:
 
     def _handle_toggles(self, toggles):
         """Handle toggle commands dari input handler."""
-        if toggles.get("space"):
-            self.mode = MODE_MANUAL if self.mode == MODE_AUTONOMOUS else MODE_AUTONOMOUS
-            print(f"\033[96m[INFO] Mode: {self.mode}\033[0m")
-            if self.mode == MODE_AUTONOMOUS:
-                self.controller.reset()
-
-        if toggles.get("record"):
-            self.is_recording = not self.is_recording
-            if self.is_recording:
-                self.current_demo = []
-                print("\033[96m[INFO] MULAI MEREKAM demonstrasi (Behavior Cloning)...\033[0m")
-            else:
-                if len(self.current_demo) > 10:
-                    self.demonstrations.append(self.current_demo)
-                    print(f"\033[96m[INFO] Demonstrasi selesai! {len(self.current_demo)} steps tersimpan.\033[0m")
-                    print(f"\033[96m       Total demo tersimpan: {len(self.demonstrations)}\033[0m")
-                else:
-                    print("\033[96m[INFO] Demonstrasi terlalu pendek, dibatalkan.\033[0m")
-
-        if toggles.get("replay"):
-            if len(self.demonstrations) > 0 and not self.is_replaying:
-                self.is_replaying = True
-                self.replay_idx = 0
-                self.replay_data = self.demonstrations[-1]
-                self.vehicle.reset()
-                self.controller.reset()
-                print(f"\033[96m[INFO] REPLAY demonstrasi ({len(self.replay_data)} steps)\033[0m")
-            else:
-                self.is_replaying = False
-                self.replay_data = None
-                print("\033[96m[INFO] Replay dihentikan.\033[0m")
-
         if toggles.get("chunking"):
             self.use_action_chunking = not self.use_action_chunking
             print(f"\033[96m[INFO] Action Chunking: {'AKTIF' if self.use_action_chunking else 'NONAKTIF'}\033[0m")
 
-        if toggles.get("pos_ctrl"):
-            self.control_mode = CTRL_POSITION
-            print(f"\033[96m[INFO] Control mode: POSITION CONTROL\033[0m")
-
-        if toggles.get("vel_ctrl"):
-            self.control_mode = CTRL_VELOCITY
-            print(f"\033[96m[INFO] Control mode: VELOCITY CONTROL\033[0m")
-
-    def _step_manual(self, throttle, steering):
-        """Step untuk mode manual."""
-        self.vehicle.apply_action(throttle, steering, self.control_mode)
-
-        if self.is_recording:
-            state = self.vehicle.get_state()
-            obs = {
-                "position": state["position"].copy(),
-                "yaw": state["yaw"],
-                "speed": state["speed"],
-            }
-            action = np.array([throttle, steering])
-            self.current_demo.append((obs, action))
-
     def _step_autonomous(self):
-        """Step untuk mode autonomous (waypoint following)."""
+        """Autonomous step dengan full Diffusion Policy pipeline."""
         state = self.vehicle.get_state()
+
+        # Pure Pursuit control
         throttle, steering = self.controller.compute_action(state)
 
         # ACTION CHUNKING
@@ -168,32 +97,46 @@ class DiffusionPolicySimulator:
                 chunk = np.mean(self.action_chunk_buffer, axis=0)
                 throttle, steering = chunk[0], chunk[1]
 
-        self.vehicle.apply_action(throttle, steering, self.control_mode)
-        self._visualize_trajectory_preview(state)
+        # Apply action ke vehicle
+        self.vehicle.apply_action(throttle, steering, CTRL_POSITION)
 
-        # ===== WAYPOINT STATUS OUTPUT =====
+        # ===== PIPELINE VISUALIZATION =====
+        # Get target waypoint
+        if self.controller.current_wp_idx < len(self.controller.waypoints):
+            target_wp = self.controller.waypoints[self.controller.current_wp_idx]
+        else:
+            target_wp = self.controller.waypoints[-1]
+
+        # Stage 1: OBSERVATION
+        obs = self.diffusion_pipeline.extract_observation(state, target_wp)
+
+        # Stage 2: ENCODER
+        feat = self.diffusion_pipeline.encode_observation()
+
+        # Stage 3: CONDITIONAL DIFFUSION (iterative denoising untuk display)
+        self.diffusion_pipeline.diffusion_history = []
+        for _ in range(self.diffusion_pipeline.max_diffusion_steps):
+            self.diffusion_pipeline.diffusion_denoise_iteration(throttle, steering)
+
+        # Stage 4: ACTION SEQUENCE
+        self.diffusion_pipeline.predicted_action = np.array([throttle, steering])
+
+        # Print pipeline output
+        print(self.diffusion_pipeline.get_terminal_output())
+
+        # ===== WAYPOINT STATUS =====
         current_wp_idx = self.controller.current_wp_idx
         total_waypoints = len(self.controller.waypoints)
 
-        # Print status setiap frame
         if current_wp_idx < total_waypoints:
-            current_wp = self.controller.waypoints[current_wp_idx]
-            dist_to_wp = np.linalg.norm(state["position"][:2] - current_wp[:2])
+            dist_to_wp = np.linalg.norm(state["position"][:2] - self.controller.waypoints[current_wp_idx][:2])
             progress = f"{current_wp_idx}/{total_waypoints-1}"
             print(f"\033[94m[AUTONOMOUS] Heading to WP{progress} | Distance: {dist_to_wp:.2f}m | Speed: {state['speed']:.2f} m/s\033[0m")
         else:
             print(f"\033[94m[AUTONOMOUS] ALL WAYPOINTS COMPLETED!\033[0m")
 
-    def _step_replay(self):
-        """Replay demonstrasi (Behavior Cloning)."""
-        if self.replay_data is None or self.replay_idx >= len(self.replay_data):
-            print("[INFO] ✅ Replay selesai!")
-            self.is_replaying = False
-            return
-
-        _, action = self.replay_data[self.replay_idx]
-        self.vehicle.apply_action(action[0], action[1], self.control_mode)
-        self.replay_idx += 1
+        # Visualize trajectory
+        self._visualize_trajectory_preview(state)
 
     def _visualize_trajectory_preview(self, state):
         """Visualisasi predicted trajectory."""
@@ -210,30 +153,22 @@ class DiffusionPolicySimulator:
     def _draw_ui(self):
         """Tampilkan informasi HUD di layar simulasi."""
         state = self.vehicle.get_state()
-        mode_color = [0, 1, 0] if self.mode == MODE_AUTONOMOUS else [1, 1, 0]
 
         info_lines = [
-            ("AV SIMULATOR — Diffusion Policy Demo", [1, 1, 1], 0.95),
+            ("AV SIMULATOR — Diffusion Policy", [1, 1, 1], 0.95),
             ("", [1, 1, 1], 0.90),
-            (f"Mode: {self.mode}", mode_color, 0.86),
-            (f"Control: {self.control_mode.upper()}", [0.5, 0.8, 1], 0.82),
+            ("Mode: AUTONOMOUS", [0, 1, 0], 0.86),
+            (f"Control: POSITION CONTROL", [0.5, 0.8, 1], 0.82),
             (f"Action Chunking: {'ON' if self.use_action_chunking else 'OFF'}",
              [0.3, 1, 0.3] if self.use_action_chunking else [1, 0.3, 0.3], 0.78),
-            (f"Recording: {'●' if self.is_recording else '○'} {len(self.current_demo)} steps",
-             [1, 0, 0] if self.is_recording else [0.5, 0.5, 0.5], 0.74),
-            (f"Demos saved: {len(self.demonstrations)}", [1, 1, 0], 0.70),
-            (f"Replay: {'▶' if self.is_replaying else '■'}",
-             [0, 1, 0] if self.is_replaying else [0.5, 0.5, 0.5], 0.66),
-            (f"Steps: {self.step_count}", [1, 1, 1], 0.62),
-            (f"Speed: {state['speed']:.2f} m/s", [0.5, 1, 0.5], 0.58),
+            (f"Steps: {self.step_count}", [1, 1, 1], 0.74),
+            (f"Speed: {state['speed']:.2f} m/s", [0.5, 1, 0.5], 0.70),
             (f"Goal: {'✅ REACHED!' if self.goal_reached else '⏳ navigating...'}",
-             [0, 1, 0] if self.goal_reached else [1, 1, 1], 0.54),
-            ("", [1, 1, 1], 0.48),
-            ("─── CONTROLS ───", [1, 1, 1], 0.44),
-            ("WASD/Arrows: Drive | SPACE: Mode", [0.7, 0.7, 0.7], 0.40),
-            ("R: Record Demo | P: Replay Demo", [0.7, 0.7, 0.7], 0.36),
-            ("C: Action Chunking | 1/2: Ctrl Mode", [0.7, 0.7, 0.7], 0.32),
-            ("Xbox: D-Pad/Sticks/Triggers", [0.7, 0.7, 0.7], 0.28),
+             [0, 1, 0] if self.goal_reached else [1, 1, 1], 0.66),
+            ("", [1, 1, 1], 0.60),
+            ("─── CONTROLS ───", [1, 1, 1], 0.56),
+            ("C: Toggle Action Chunking", [0.7, 0.7, 0.7], 0.52),
+            ("Q: Quit", [0.7, 0.7, 0.7], 0.48),
         ]
 
         for text, color, y_pos in info_lines:
@@ -245,16 +180,15 @@ class DiffusionPolicySimulator:
             except:
                 pass
 
-        # ===== WAYPOINT LABELS (ADD EVERY FRAME) - SUPER VISIBLE =====
+        # ===== WAYPOINT LABELS =====
         for i, wp in enumerate(self.controller.waypoints):
             try:
-                # WHITE TEXT, VERY LARGE SIZE (5.0 is huge)
                 p.addUserDebugText(
                     f"WP{i}",
-                    [wp[0], wp[1], 0.8],  # Higher position
-                    [1, 1, 1],  # Pure white
-                    textSize=5.0,  # VERY LARGE
-                    lifeTime=0.15  # Per frame
+                    [wp[0], wp[1], 0.8],
+                    [1, 1, 1],
+                    textSize=5.0,
+                    lifeTime=0.15
                 )
             except:
                 pass
